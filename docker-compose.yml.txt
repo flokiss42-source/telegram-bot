@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  telegram-bot:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - BOT_TOKEN=7680262994:AAECsRUEeFjnBpq0xLT9Ff4k1Dz9uAJeZ64
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

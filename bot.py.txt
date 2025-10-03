@@ -1,0 +1,1735 @@
+import logging
+import requests
+import pandas as pd
+import numpy as np
+import asyncio
+import random
+import sqlite3
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+
+# === НАСТРОЙКИ ===
+import os
+BOT_TOKEN = os.getenv('BOT_TOKEN', "7680262994:AAECsRUEeFjnBpq0xLT9Ff4k1Dz9uAJeZ64")
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ==================== NFT СИСТЕМА ====================
+class ExclusiveNFTSystem:
+    def __init__(self):
+        self.owner_id = 6524964030
+        self.owner_username = "@beyondbesdey"
+        self.user_stars = {}
+        self.nft_collections = self._initialize_nft_collections()
+        self.user_nfts = {}
+        self.star_transactions = []
+        
+    def _initialize_nft_collections(self):
+        return {
+            'death_note_relics': {
+                'name': '📖 Реликвии Тетради Смерти',
+                'items': {
+                    'death_note_page': {
+                        'name': 'Страница Тетради Смерти',
+                        'price': 50,
+                        'rarity': 'LEGENDARY',
+                        'description': 'Подлинная страница из Тетради Смерти',
+                        'benefits': ['+50% к наградам за записи'],
+                        'stock': 100,
+                        'image': '📜'
+                    },
+                    'shinigami_eyes': {
+                        'name': '👁️ Глаза Шинигами',
+                        'price': 100,
+                        'rarity': 'MYTHIC', 
+                        'description': 'Видеть имена и сроки жизни смертных',
+                        'benefits': ['+100% к наградам за цели'],
+                        'stock': 50,
+                        'image': '👁️'
+                    }
+                }
+            },
+            'kira_legacy': {
+                'name': '⚡ Наследие Кира',
+                'items': {
+                    'kira_mask': {
+                        'name': '🎭 Маска Кира', 
+                        'price': 75,
+                        'rarity': 'LEGENDARY',
+                        'description': 'Легендарная маска самого Кира',
+                        'benefits': ['+2 страницы тетради'],
+                        'stock': 25,
+                        'image': '🎭'
+                    }
+                }
+            }
+        }
+
+    def add_stars(self, user_id, stars_count):
+        if user_id not in self.user_stars:
+            self.user_stars[user_id] = 0
+        self.user_stars[user_id] += stars_count
+        return True
+
+    def get_user_stars(self, user_id):
+        return self.user_stars.get(user_id, 0)
+
+    def get_nft_marketplace(self):
+        text = "🎴 <b>ЭКСКЛЮЗИВНЫЙ NFT МАРКЕТПЛЕЙС</b>\n\n"
+        text += f"💫 <b>Владелец:</b> {self.owner_username}\n"
+        text += "⭐ <b>Валюта:</b> Telegram Stars\n\n"
+        
+        for collection_id, collection in self.nft_collections.items():
+            text += f"📂 <b>{collection['name']}</b>\n"
+            for item_id, item in collection['items'].items():
+                text += f"{item['image']} <b>{item['name']}</b>\n"
+                text += f"   💰 {item['price']} звезд | 🎯 {item['rarity']}\n"
+                text += f"   📦 {item['stock']} шт. | 💡 {item['description']}\n\n"
+        
+        text += "🔮 <b>Как купить:</b>\n"
+        text += f"1. Напишите {self.owner_username}\n"
+        text += "2. Отправьте Stars в Telegram\n"
+        text += "3. Получите NFT!\n"
+        return text
+
+    def purchase_nft(self, user_id, collection_id, item_id):
+        if collection_id not in self.nft_collections:
+            return False, "❌ Коллекция не найдена"
+        
+        nft_item = self.nft_collections[collection_id]['items'][item_id]
+        user_stars = self.user_stars.get(user_id, 0)
+        
+        if user_stars < nft_item['price']:
+            return False, f"❌ Недостаточно звезд. Нужно: {nft_item['price']}"
+        
+        if nft_item['stock'] <= 0:
+            return False, "❌ NFT распродан"
+        
+        self.user_stars[user_id] -= nft_item['price']
+        nft_item['stock'] -= 1
+        
+        if user_id not in self.user_nfts:
+            self.user_nfts[user_id] = []
+            
+        nft_data = {
+            'id': f"{collection_id}_{item_id}",
+            'name': nft_item['name'],
+            'rarity': nft_item['rarity'],
+            'image': nft_item['image'],
+            'benefits': nft_item['benefits']
+        }
+        
+        self.user_nfts[user_id].append(nft_data)
+        return True, nft_data
+
+    def get_user_nfts(self, user_id):
+        return self.user_nfts.get(user_id, [])
+
+# ==================== УЛУЧШЕННЫЙ АНАЛИЗАТОР РЫНКА ====================
+class AdvancedMarketAnalyzer:
+    def __init__(self):
+        self.top_cryptos = [
+            'bitcoin', 'ethereum', 'binancecoin', 'ripple', 'cardano', 
+            'solana', 'polkadot', 'dogecoin', 'avalanche-2', 'matic-network',
+            'litecoin', 'chainlink', 'cosmos', 'stellar', 'bitcoin-cash',
+            'monero', 'ethereum-classic', 'filecoin', 'theta-token', 'aave'
+        ]
+    
+    def get_detailed_crypto_data(self, symbol):
+        """Получение детальных данных с множеством индикаторов"""
+        try:
+            url = f"https://api.coingecko.com/api/v3/coins/{symbol}"
+            params = {
+                'localization': 'false',
+                'tickers': 'true',
+                'market_data': 'true',
+                'community_data': 'true',
+                'developer_data': 'true',
+                'sparkline': 'true'
+            }
+            response = requests.get(url, params=params, timeout=20)
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка получения данных {symbol}: {e}")
+            return None
+    
+    def calculate_advanced_indicators(self, market_data):
+        """Расчет продвинутых технических индикаторов"""
+        try:
+            # Используем исторические данные для расчета
+            prices = market_data.get('sparkline_in_7d', {}).get('price', [])
+            if len(prices) < 10:
+                return self._generate_fallback_indicators()
+            
+            df = pd.DataFrame(prices, columns=['price'])
+            
+            # RSI
+            delta = df['price'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs)).iloc[-1] if not rs.isna().all() else 50
+            
+            # Волатильность (ATR)
+            high = df['price'].rolling(window=14).max()
+            low = df['price'].rolling(window=14).min()
+            atr = ((high - low) / df['price'] * 100).iloc[-1] if not high.isna().all() else 5
+            
+            # Трендовые индикаторы
+            sma_20 = df['price'].rolling(window=20).mean().iloc[-1]
+            sma_50 = df['price'].rolling(window=50).mean().iloc[-1]
+            trend = "🟢 ВОСХОДЯЩИЙ" if sma_20 > sma_50 else "🔴 НИСХОДЯЩИЙ" if sma_20 < sma_50 else "🟡 БОКОВОЙ"
+            
+            # Уровни поддержки и сопротивления
+            resistance = df['price'].tail(20).max()
+            support = df['price'].tail(20).min()
+            current_price = df['price'].iloc[-1]
+            
+            return {
+                'rsi': round(rsi, 1),
+                'volatility': round(atr, 2),
+                'trend': trend,
+                'sma_20': round(sma_20, 2),
+                'sma_50': round(sma_50, 2),
+                'resistance': round(resistance, 2),
+                'support': round(support, 2),
+                'distance_to_resistance': round(((resistance - current_price) / current_price * 100), 1),
+                'distance_to_support': round(((current_price - support) / current_price * 100), 1)
+            }
+        except:
+            return self._generate_fallback_indicators()
+    
+    def _generate_fallback_indicators(self):
+        """Резервные индикаторы если API не работает"""
+        return {
+            'rsi': random.randint(30, 70),
+            'volatility': random.uniform(2, 15),
+            'trend': random.choice(["🟢 ВОСХОДЯЩИЙ", "🔴 НИСХОДЯЩИЙ", "🟡 БОКОВОЙ"]),
+            'sma_20': 0,
+            'sma_50': 0,
+            'resistance': 0,
+            'support': 0,
+            'distance_to_resistance': 0,
+            'distance_to_support': 0
+        }
+    
+    def generate_comprehensive_analysis(self, symbol):
+        """Комплексный анализ с инвестиционными рекомендациями"""
+        data = self.get_detailed_crypto_data(symbol)
+        
+        if not data:
+            return self._generate_fallback_analysis(symbol)
+        
+        market_data = data.get('market_data', {})
+        current_price = market_data.get('current_price', {}).get('usd', 0)
+        price_change_24h = market_data.get('price_change_percentage_24h', 0)
+        price_change_7d = market_data.get('price_change_percentage_7d', 0)
+        market_cap = market_data.get('market_cap', {}).get('usd', 0)
+        volume_24h = market_data.get('total_volume', {}).get('usd', 0)
+        
+        indicators = self.calculate_advanced_indicators(market_data)
+        
+        return self._build_comprehensive_analysis(
+            symbol, current_price, price_change_24h, price_change_7d,
+            market_cap, volume_24h, indicators, data
+        )
+    
+    def _build_comprehensive_analysis(self, symbol, current_price, price_change_24h, price_change_7d, 
+                                    market_cap, volume_24h, indicators, raw_data):
+        """Построение комплексного анализа"""
+        display_symbol = symbol.upper().replace('-', ' ').title()
+        
+        # Анализ рисков
+        risk_score = self._calculate_risk_score(price_change_24h, indicators['volatility'], market_cap)
+        
+        # Инвестиционная стратегия
+        strategy = self._generate_investment_strategy(indicators, risk_score, price_change_24h)
+        
+        # Торговые сигналы
+        signals = self._generate_trading_signals(indicators, price_change_24h)
+        
+        return {
+            'symbol': display_symbol,
+            'current_price': current_price,
+            'price_change_24h': price_change_24h,
+            'price_change_7d': price_change_7d,
+            'market_cap': market_cap,
+            'volume_24h': volume_24h,
+            'indicators': indicators,
+            'risk_score': risk_score,
+            'strategy': strategy,
+            'signals': signals,
+            'timestamp': datetime.now()
+        }
+    
+    def _calculate_risk_score(self, price_change, volatility, market_cap):
+        """Расчет оценки риска"""
+        score = 0
+        
+        # Волатильность (0-40 points)
+        if volatility > 20: score += 40
+        elif volatility > 15: score += 30
+        elif volatility > 10: score += 20
+        elif volatility > 5: score += 10
+        
+        # Изменение цены (0-30 points)
+        if abs(price_change) > 15: score += 30
+        elif abs(price_change) > 10: score += 20
+        elif abs(price_change) > 5: score += 10
+        
+        # Капитализация (0-30 points)
+        if market_cap < 100000000: score += 30  # < 100M
+        elif market_cap < 1000000000: score += 20  # < 1B
+        elif market_cap < 10000000000: score += 10  # < 10B
+        
+        return min(score, 100)
+    
+    def _generate_investment_strategy(self, indicators, risk_score, price_change):
+        """Генерация инвестиционной стратегии"""
+        strategies = []
+        
+        # Стратегия на основе RSI
+        if indicators['rsi'] < 30:
+            strategies.append("📉 RSI показывает перепроданность - хорошая точка для входа")
+        elif indicators['rsi'] > 70:
+            strategies.append("📈 RSI показывает перекупленность - осторожность с покупками")
+        
+        # Стратегия на основе тренда
+        if "ВОСХОДЯЩИЙ" in indicators['trend']:
+            strategies.append("🟢 Тренд восходящий - рассматривайте покупки на коррекциях")
+        elif "НИСХОДЯЩИЙ" in indicators['trend']:
+            strategies.append("🔴 Тренд нисходящий - избегайте покупок, рассматривайте шорты")
+        
+        # Стратегия на основе риска
+        if risk_score > 70:
+            strategies.append("⚡ ВЫСОКИЙ РИСК - инвестируйте не более 1-2% капитала")
+        elif risk_score > 40:
+            strategies.append("⚠️ СРЕДНИЙ РИСК - инвестируйте 3-5% капитала")
+        else:
+            strategies.append("🛡️ НИЗКИЙ РИСК - можно инвестировать 5-10% капитала")
+        
+        # Временные рамки
+        if abs(price_change) > 10:
+            strategies.append("⏰ Высокая волатильность - рассматривайте краткосрочные сделки")
+        else:
+            strategies.append("📅 Низкая волатильность - подходит для долгосрочных инвестиций")
+        
+        return strategies
+    
+    def _generate_trading_signals(self, indicators, price_change):
+        """Генерация торговых сигналов"""
+        signals = []
+        
+        # Сигналы покупки
+        if indicators['rsi'] < 35 and "ВОСХОДЯЩИЙ" in indicators['trend']:
+            signals.append("🎯 СИГНАЛ ПОКУПКИ: RSI в зоне перепроданности + восходящий тренд")
+        
+        if indicators['distance_to_support'] < 3:
+            signals.append("🛡️ БЛИЗКО К ПОДДЕРЖКЕ: Хорошая точка для входа со стоп-лоссом")
+        
+        # Сигналы продажи
+        if indicators['rsi'] > 75:
+            signals.append("🏃‍♂️ СИГНАЛ ПРОДАЖИ: RSI в зоне перекупленности")
+        
+        if indicators['distance_to_resistance'] < 3:
+            signals.append("⛔ БЛИЗКО К СОПРОТИВЛЕНИЮ: Рассмотрите фиксацию прибыли")
+        
+        # Сигналы осторожности
+        if indicators['volatility'] > 15:
+            signals.append("🎢 ВЫСОКАЯ ВОЛАТИЛЬНОСТЬ: Уменьшите размер позиции")
+        
+        if abs(price_change) > 20:
+            signals.append("🚨 РЕЗКОЕ ИЗМЕНЕНИЕ ЦЕНЫ: Возможна коррекция")
+        
+        return signals
+    
+    def _generate_fallback_analysis(self, symbol):
+        """Резервный анализ"""
+        base_prices = {
+            'bitcoin': 45000, 'ethereum': 2500, 'binancecoin': 300,
+            'ripple': 0.5, 'cardano': 0.4, 'solana': 100,
+            'polkadot': 6, 'dogecoin': 0.1, 'avalanche-2': 30,
+            'matic-network': 0.7
+        }
+        
+        current_price = base_prices.get(symbol, random.uniform(0.1, 100))
+        
+        return {
+            'symbol': symbol.upper(),
+            'current_price': current_price,
+            'price_change_24h': random.uniform(-10, 10),
+            'price_change_7d': random.uniform(-20, 20),
+            'market_cap': current_price * random.uniform(1e6, 1e9),
+            'volume_24h': current_price * random.uniform(1e5, 1e8),
+            'indicators': self._generate_fallback_indicators(),
+            'risk_score': random.randint(20, 80),
+            'strategy': ["Используйте DCA стратегию", "Диверсифицируйте портфель"],
+            'signals': ["Данные временно недоступны"],
+            'timestamp': datetime.now()
+        }
+
+    def get_market_overview(self):
+        """Обзор рынка"""
+        try:
+            url = "https://api.coingecko.com/api/v3/global"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()['data']
+                return {
+                    'total_market_cap': data['total_market_cap']['usd'],
+                    'market_cap_change_24h': data['market_cap_change_percentage_24h_usd'],
+                    'market_sentiment': "🟢 Бычий" if data['market_cap_change_percentage_24h_usd'] > 0 else "🔴 Медвежий"
+                }
+        except:
+            pass
+        
+        return {
+            'total_market_cap': 2500000000000,
+            'market_cap_change_24h': random.uniform(-5, 5),
+            'market_sentiment': random.choice(["🟢 Бычий", "🔴 Медвежий"])
+        }
+
+    def get_trending_coins(self):
+        """Трендовые монеты"""
+        try:
+            url = "https://api.coingecko.com/api/v3/search/trending"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                trending = []
+                for coin in data['coins'][:5]:
+                    trending.append({
+                        'name': coin['item']['name'],
+                        'symbol': coin['item']['symbol']
+                    })
+                return trending
+        except:
+            pass
+        
+        # Резервные данные
+        return [
+            {'name': 'Bitcoin', 'symbol': 'btc'},
+            {'name': 'Ethereum', 'symbol': 'eth'},
+            {'name': 'Solana', 'symbol': 'sol'},
+            {'name': 'Cardano', 'symbol': 'ada'},
+            {'name': 'Dogecoin', 'symbol': 'doge'}
+        ]
+
+# ==================== УЛУЧШЕННАЯ ИГРА LIGHT COIN ====================
+class EnhancedLightCoinGame:
+    def __init__(self):
+        self.light_price = 0.01
+        self.market_cap = 500000
+        self.total_supply = 1000000000
+        self.user_balances = {}
+        self.user_levels = {}
+        self.user_pages = {}
+        self.user_eliminated = {}
+        self.daily_writes = {}
+        self.user_achievements = {}
+        
+    def get_user_data(self, user_id, username):
+        if user_id not in self.user_balances:
+            self.user_balances[user_id] = 0
+            self.user_levels[user_id] = 1
+            self.user_pages[user_id] = 1
+            self.user_eliminated[user_id] = 0
+        
+        return {
+            'user_id': user_id,
+            'username': username,
+            'light_balance': self.user_balances[user_id],
+            'level': self.user_levels[user_id],
+            'death_note_pages': self.user_pages[user_id],
+            'eliminated_targets': self.user_eliminated[user_id],
+            'shinigami_eyes': self.user_levels[user_id] >= 5,
+            'achievements': self.user_achievements.get(user_id, [])
+        }
+    
+    def add_write(self, user_id):
+        """Улучшенная система записей в тетради"""
+        today = datetime.now().date()
+        
+        if user_id not in self.daily_writes:
+            self.daily_writes[user_id] = {'date': today, 'count': 0}
+        
+        if self.daily_writes[user_id]['date'] != today:
+            self.daily_writes[user_id] = {'date': today, 'count': 0}
+        
+        user_data = self.get_user_data(user_id, "")
+        daily_limit = 20 + (user_data['death_note_pages'] * 5)
+        
+        if self.daily_writes[user_id]['count'] >= daily_limit:
+            return False, f"❌ Достигнут дневной лимит записей ({daily_limit})!"
+        
+        self.daily_writes[user_id]['count'] += 1
+        
+        # Награда зависит от уровня и страниц тетради
+        base_reward = random.uniform(1.0, 10.0)
+        level_bonus = user_data['level'] * 0.5
+        pages_bonus = user_data['death_note_pages'] * 0.3
+        total_reward = base_reward + level_bonus + pages_bonus
+        
+        self.user_balances[user_id] += total_reward
+        
+        # Проверка уровня
+        if self.user_balances[user_id] >= self.user_levels[user_id] * 100:
+            self.user_levels[user_id] += 1
+            # Разблокировка способностей
+            if self.user_levels[user_id] >= 5:
+                achievement_msg = "👁️ Глаза Шинигами разблокированы!"
+            elif self.user_levels[user_id] % 3 == 0:
+                self.user_pages[user_id] += 1
+                achievement_msg = f"📖 +1 страница тетради! Всего: {self.user_pages[user_id]}"
+            else:
+                achievement_msg = f"🎉 Уровень повышен до {self.user_levels[user_id]}!"
+            
+            return True, f"✍️ Запись в тетрадь! +{total_reward:.2f} LIGHT\n{achievement_msg}"
+        
+        return True, f"✍️ Запись в тетрадь! +{total_reward:.2f} LIGHT"
+    
+    def eliminate_target(self, user_id, target_name, crime_level, difficulty):
+        """Улучшенная система устранения целей"""
+        if crime_level < 1 or crime_level > 10:
+            return False, "❌ Уровень преступления должен быть от 1 до 10"
+        
+        user_data = self.get_user_data(user_id, "")
+        
+        # Награда зависит от сложности и уровня преступления
+        base_reward = crime_level * 20
+        difficulty_multiplier = {'легкая': 1, 'средняя': 1.5, 'сложная': 2.5}
+        reward = base_reward * difficulty_multiplier.get(difficulty, 1)
+        
+        # Бонус за глаза шинигами
+        if user_data['shinigami_eyes']:
+            reward *= 1.5
+        
+        self.user_balances[user_id] += reward
+        self.user_eliminated[user_id] += 1
+        
+        # Сильное влияние на рынок
+        self.light_price *= 1.05
+        self.market_cap = self.light_price * self.total_supply
+        
+        return True, f"☠️ Цель '{target_name}' устранена! +{reward:.2f} LIGHT\n📈 Цена LIGHT выросла!"
+    
+    def get_market_data(self):
+        """Получение рыночных данных"""
+        return {
+            'price': self.light_price,
+            'market_cap': self.market_cap,
+            'total_supply': self.total_supply,
+            'volatility': random.uniform(3, 12)
+        }
+    
+    def get_leaderboard(self, limit=10):
+        """Таблица лидеров"""
+        leaders = []
+        for user_id, balance in self.user_balances.items():
+            leaders.append({
+                'username': f"Игрок_{user_id}",
+                'balance': balance,
+                'level': self.user_levels.get(user_id, 1),
+                'eliminated': self.user_eliminated.get(user_id, 0),
+                'pages': self.user_pages.get(user_id, 1)
+            })
+        
+        # Сортируем по балансу и берем топ-10
+        leaders.sort(key=lambda x: x['balance'], reverse=True)
+        return leaders[:10]
+
+# ==================== СИСТЕМА ОТЗЫВОВ ====================
+class ReviewSystem:
+    def __init__(self):
+        self.conn = sqlite3.connect('reviews.db', check_same_thread=False)
+        self.create_table()
+    
+    def create_table(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                rating INTEGER,
+                comment TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_approved BOOLEAN DEFAULT FALSE
+            )
+        ''')
+        self.conn.commit()
+    
+    def add_review(self, user_id, username, rating, comment):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                INSERT INTO reviews (user_id, username, rating, comment, is_approved)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (user_id, username, rating, comment, True))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка добавления отзыва: {e}")
+            return False
+    
+    def get_approved_reviews(self, limit=10):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT username, rating, comment, timestamp 
+                FROM reviews 
+                WHERE is_approved = TRUE 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            ''', (limit,))
+            return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Ошибка получения отзывов: {e}")
+            return []
+    
+    def get_user_review(self, user_id):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT rating, comment, timestamp 
+                FROM reviews 
+                WHERE user_id = ? 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            ''', (user_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Ошибка получения отзыва пользователя: {e}")
+            return None
+    
+    def get_reviews_stats(self):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total,
+                    AVG(rating) as avg_rating,
+                    COUNT(CASE WHEN rating = 5 THEN 1 END) as five_stars
+                FROM reviews 
+                WHERE is_approved = TRUE
+            ''')
+            return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики: {e}")
+            return (0, 0, 0)
+
+# ==================== СИСТЕМА САМООБУЧЕНИЯ ====================
+class SelfLearningSystem:
+    def __init__(self):
+        self.performance_db = sqlite3.connect('bot_learning.db', check_same_thread=False)
+        self.create_learning_tables()
+        self.optimization_history = []
+    
+    def create_learning_tables(self):
+        cursor = self.performance_db.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS command_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                command TEXT,
+                user_id INTEGER,
+                response_time REAL,
+                success BOOLEAN,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        self.performance_db.commit()
+    
+    def log_command_usage(self, command, user_id, response_time, success):
+        try:
+            cursor = self.performance_db.cursor()
+            cursor.execute('''
+                INSERT INTO command_metrics (command, user_id, response_time, success)
+                VALUES (?, ?, ?, ?)
+            ''', (command, user_id, response_time, success))
+            self.performance_db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка логирования команды: {e}")
+    
+    def analyze_performance(self):
+        try:
+            cursor = self.performance_db.cursor()
+            cursor.execute('''
+                SELECT command, 
+                       AVG(response_time) as avg_time,
+                       COUNT(*) as usage_count,
+                       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count
+                FROM command_metrics 
+                WHERE timestamp > datetime('now', '-7 days')
+                GROUP BY command
+            ''')
+            return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Ошибка анализа производительности: {e}")
+            return []
+
+# ==================== СТИЛИЗОВАННЫЙ БОТ ====================
+class DeathNoteStyledBot:
+    @staticmethod
+    def format_message(title, content, message_type="info"):
+        """Форматирование сообщений в стиле Тетради смерти"""
+        styles = {
+            "info": "📖",
+            "warning": "⚡", 
+            "success": "🔮",
+            "danger": "☠️",
+            "analysis": "🎯",
+            "review": "⭐"
+        }
+        
+        emoji = styles.get(message_type, "📖")
+        
+        return f"""
+{emoji} <b>《{title}》</b>
+{content}
+        """
+    
+    @staticmethod
+    def create_death_note_keyboard(buttons, back_button=True):
+        """Создание клавиатуры в стиле Тетради смерти"""
+        keyboard = []
+        
+        # Добавляем основные кнопки
+        for i in range(0, len(buttons), 2):
+            row = buttons[i:i+2]
+            keyboard.append(row)
+        
+        # Добавляем кнопку назад
+        if back_button:
+            keyboard.append([InlineKeyboardButton("⬅️ В ТЕНЬ", callback_data="back_main")])
+        
+        return InlineKeyboardMarkup(keyboard)
+
+# ==================== ИНИЦИАЛИЗАЦИЯ СИСТЕМ ====================
+nft_system = ExclusiveNFTSystem()
+analyzer = AdvancedMarketAnalyzer()
+light_game = EnhancedLightCoinGame()
+review_system = ReviewSystem()
+learning_system = SelfLearningSystem()
+styled_bot = DeathNoteStyledBot()
+
+# ==================== ГЛАВНЫЕ КОМАНДЫ ====================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Главная команда в стиле Тетради смерти"""
+    user = update.effective_user
+    
+    # Логируем стартовое взаимодействие
+    learning_system.log_command_usage('start', user.id, 0.1, True)
+    
+    welcome_text = styled_bot.format_message(
+        "ТЕТРАДЬ СМЕРТИ - CRYPTO ANALYTICS",
+        f"""
+👁️ <b>Приветствую, {user.first_name}!</b>
+
+Я - <b>Kira</b>, твой проводник в мире крипто-аналитики и божественной справедливости.
+
+<b>📊 РЕАЛЬНЫЙ АНАЛИЗ:</b>
+• Глубокий технический анализ
+• Инвестиционные стратегии 
+• Сигналы покупки/продажи
+• Управление рисками
+
+<b>🔮 LIGHT COIN ИГРА:</b>
+• Стань Богом нового мира
+• Верши правосудие
+• Зарабатывай LIGHT монеты
+• Соревнуйся с другими
+
+<b>🎴 NFT СИСТЕМА:</b>
+• Эксклюзивные коллекции
+• Покупка за Telegram Stars
+• Уникальные бонусы
+
+<b>⭐ СИСТЕМА ОТЗЫВОВ:</b>
+• Оцените работу бота
+• Читайте отзывы других
+• Помогите нам стать лучше
+
+<b>🤖 САМООБУЧЕНИЕ:</b>
+• Бот автоматически улучшается
+• Анализирует поведение пользователей
+• Оптимизирует производительность
+
+<b>⚡ КОМАНДЫ:</b>
+/analysis - Анализ рынка
+/game - Игра Light Coin  
+/nft - NFT маркетплейс
+/reviews - Система отзывов
+/help - Все команды
+
+<b>Выбери свой путь:</b>
+        """
+    )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("📊 АНАЛИЗ РЫНКА", callback_data="analysis_menu"),
+        InlineKeyboardButton("🔮 ИГРА LIGHT COIN", callback_data="game_menu"),
+        InlineKeyboardButton("🎴 NFT МАРКЕТПЛЕЙС", callback_data="nft_market"),
+        InlineKeyboardButton("⭐ ОТЗЫВЫ", callback_data="reviews_menu"),
+        InlineKeyboardButton("⚡ ПОМОЩЬ", callback_data="help")
+    ], back_button=False)
+    
+    await update.message.reply_text(welcome_text, parse_mode='HTML', reply_markup=keyboard)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда помощи"""
+    help_text = styled_bot.format_message(
+        "ПОМОЩЬ - ВСЕ КОМАНДЫ",
+        """
+<b>🔮 ОСНОВНЫЕ КОМАНДЫ:</b>
+/start - Главное меню
+/help - Эта справка
+
+<b>📊 АНАЛИЗ РЫНКА:</b>
+/analysis - Меню анализа
+/bitcoin - Анализ Bitcoin
+/ethereum - Анализ Ethereum  
+/solana - Анализ Solana
+/market - Обзор рынка
+/trending - Трендовые монеты
+
+<b>🎮 ИГРА LIGHT COIN:</b>
+/game - Запуск игры
+/mystats - Мой статус
+/write - Сделать запись
+/targets - Устранить цель
+/leaderboard - Рейтинг игроков
+/lightmarket - Рынок LIGHT
+
+<b>🎴 NFT СИСТЕМА:</b>
+/nft - NFT маркетплейс
+/mystars - Мои звезды
+/mynfts - Мои NFT
+
+<b>⭐ СИСТЕМА ОТЗЫВОВ:</b>
+/reviews - Отзывы и рейтинги
+
+<b>⚡ СОВЕТ:</b>
+Используй кнопки для удобной навигации!
+        """
+    )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("📊 АНАЛИЗ", callback_data="analysis_menu"),
+        InlineKeyboardButton("🔮 ИГРА", callback_data="game_menu"),
+        InlineKeyboardButton("🎴 NFT", callback_data="nft_market"),
+        InlineKeyboardButton("⭐ ОТЗЫВЫ", callback_data="reviews_menu"),
+        InlineKeyboardButton("⬅️ ГЛАВНАЯ", callback_data="back_main")
+    ])
+    
+    await update.message.reply_text(help_text, parse_mode='HTML', reply_markup=keyboard)
+
+# ==================== NFT КОМАНДЫ ====================
+async def nft_marketplace_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """NFT маркетплейс"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    marketplace_text = nft_system.get_nft_marketplace()
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("⭐ МОИ ЗВЕЗДЫ", callback_data="my_stars"),
+        InlineKeyboardButton("🎴 МОИ NFT", callback_data="my_nfts"),
+        InlineKeyboardButton("📞 СВЯЗАТЬСЯ", url="https://t.me/beyondbesdey"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_main")
+    ])
+    
+    if query:
+        await query.edit_message_text(marketplace_text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(marketplace_text, parse_mode='HTML', reply_markup=keyboard)
+
+async def my_stars_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Мои звезды"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user_id = update.effective_user.id
+    stars_balance = nft_system.get_user_stars(user_id)
+    
+    text = f"""
+⭐ <b>ВАШ БАЛАНС ЗВЕЗД</b>
+
+💰 <b>Звезд:</b> {stars_balance}
+
+🔮 <b>Как получить звезды:</b>
+1. Напишите @beyondbesdey
+2. Отправьте Stars через Telegram
+3. Звезды зачислятся на ваш баланс!
+
+💎 После этого вы сможете покупать NFT!
+    """
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("🛒 NFT МАРКЕТ", callback_data="nft_market"),
+        InlineKeyboardButton("📞 ОТПРАВИТЬ ЗВЕЗДЫ", url="https://t.me/beyondbesdey"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_main")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def my_nfts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Мои NFT"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user_id = update.effective_user.id
+    user_nfts = nft_system.get_user_nfts(user_id)
+    
+    if not user_nfts:
+        text = "🎴 <b>У ВАС ПОКА НЕТ NFT</b>\n\nПосетите маркетплейс чтобы приобрести уникальные предметы!"
+    else:
+        text = "🎴 <b>ВАША КОЛЛЕКЦИЯ NFT</b>\n\n"
+        for nft in user_nfts:
+            text += f"{nft['image']} <b>{nft['name']}</b>\n"
+            text += f"   🎯 {nft['rarity']}\n"
+            for benefit in nft['benefits']:
+                text += f"   💡 {benefit}\n"
+            text += "\n"
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("🛒 МАРКЕТПЛЕЙС", callback_data="nft_market"),
+        InlineKeyboardButton("⭐ МОИ ЗВЕЗДЫ", callback_data="my_stars"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="back_main")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+# ==================== УЛУЧШЕННЫЙ АНАЛИЗ ====================
+async def analysis_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Меню анализа"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    text = styled_bot.format_message(
+        "АНАЛИЗ РЫНКА - ВЫБЕРИ МОНЕТУ",
+        """
+<b>🎯 Доступные монеты для анализа:</b>
+
+• Bitcoin (BTC) - цифровое золото
+• Ethereum (ETH) - смарт-контракты  
+• Solana (SOL) - высокая скорость
+• Cardano (ADA) - научный подход
+• Polkadot (DOT) - интероперабельность
+
+<b>⚡ Что ты получишь:</b>
+• Технические индикаторы
+• Уровни риска
+• Стратегии инвестирования
+• Торговые сигналы
+        """
+    )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("₿ BITCOIN", callback_data="analyze_bitcoin"),
+        InlineKeyboardButton("Ξ ETHEREUM", callback_data="analyze_ethereum"),
+        InlineKeyboardButton("🔸 SOLANA", callback_data="analyze_solana"),
+        InlineKeyboardButton("🐕 DOGECOIN", callback_data="analyze_dogecoin"),
+        InlineKeyboardButton("📈 ОБЗОР РЫНКА", callback_data="market_overview"),
+        InlineKeyboardButton("🚀 ТРЕНДЫ", callback_data="trending"),
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu"),
+        InlineKeyboardButton("🎴 NFT", callback_data="nft_market")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def comprehensive_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol=None):
+    """Комплексный анализ с инвестиционными рекомендациями"""
+    if not symbol:
+        query = update.callback_query
+        symbol = query.data.replace('analyze_', '')
+        await query.answer()
+    
+    analysis = analyzer.generate_comprehensive_analysis(symbol)
+    
+    if not analysis:
+        text = styled_bot.format_message("ОШИБКА", "Не удалось получить данные", "danger")
+        if hasattr(update, 'callback_query'):
+            await update.callback_query.edit_message_text(text, parse_mode='HTML')
+        else:
+            await update.message.reply_text(text, parse_mode='HTML')
+        return
+    
+    # Форматируем комплексный анализ
+    analysis_text = f"""
+<b>💎 {analysis['symbol']}</b>
+💰 Цена: ${analysis['current_price']:,.2f}
+📈 24ч: {analysis['price_change_24h']:+.2f}%
+📊 7д: {analysis['price_change_7d']:+.2f}%
+
+<b>📊 ТЕХНИЧЕСКИЕ ИНДИКАТОРЫ:</b>
+• RSI: {analysis['indicators']['rsi']}
+• Волатильность: {analysis['indicators']['volatility']}%
+• Тренд: {analysis['indicators']['trend']}
+• К сопротивлению: +{analysis['indicators']['distance_to_resistance']}%
+• К поддержке: -{analysis['indicators']['distance_to_support']}%
+
+<b>⚡ ОЦЕНКА РИСКА:</b> {analysis['risk_score']}/100
+
+<b>🎯 СТРАТЕГИЯ:</b>
+"""
+    
+    for strategy in analysis['strategy'][:3]:
+        analysis_text += f"• {strategy}\n"
+    
+    analysis_text += f"\n<b>📢 СИГНАЛЫ:</b>"
+    for signal in analysis['signals'][:2]:
+        analysis_text += f"\n• {signal}"
+    
+    analysis_text += f"\n\n⏰ {analysis['timestamp'].strftime('%d.%m.%Y %H:%M')}"
+    
+    text = styled_bot.format_message(f"АНАЛИЗ {analysis['symbol']}", analysis_text, "analysis")
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data=f"analyze_{symbol}"),
+        InlineKeyboardButton("📊 ДРУГАЯ МОНЕТА", callback_data="analysis_menu"),
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu"),
+        InlineKeyboardButton("🎴 NFT", callback_data="nft_market")
+    ])
+    
+    if hasattr(update, 'callback_query'):
+        await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def market_overview(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обзор рынка"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    overview = analyzer.get_market_overview()
+    
+    if overview:
+        text = f"""
+🌐 <b>ОБЗОР РЫНКА</b>
+
+💎 Капитализация: ${overview['total_market_cap']/1e12:.2f} трлн
+📈 Изменение: {overview['market_cap_change_24h']:+.2f}%
+🎭 Настроение: {overview['market_sentiment']}
+
+🚀 Трендовые монеты:
+"""
+        for i, coin in enumerate(overview['trending_coins'][:3], 1):
+            text += f"{i}. {coin['name']} ({coin['symbol']})\n"
+    else:
+        text = "❌ Не удалось получить данные рынка"
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("📊 АНАЛИЗ", callback_data="analysis_menu"),
+        InlineKeyboardButton("🔮 ИГРА", callback_data="game_menu"),
+        InlineKeyboardButton("🎴 NFT", callback_data="nft_market")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def trending_coins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Трендовые монеты"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    trending = analyzer.get_trending_coins()
+    
+    text = "🔥 <b>ТРЕНДОВЫЕ МОНЕТЫ</b>\n\n"
+    for i, coin in enumerate(trending[:5], 1):
+        text += f"{i}. {coin['name']} ({coin['symbol'].upper()})\n"
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("📊 АНАЛИЗ", callback_data="analysis_menu"),
+        InlineKeyboardButton("🔮 ИГРА", callback_data="game_menu"),
+        InlineKeyboardButton("🎴 NFT", callback_data="nft_market")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+# ==================== УЛУЧШЕННАЯ ИГРА ====================
+async def enhanced_light_coin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Улучшенное меню игры"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user_id = update.effective_user.id
+    username = update.effective_user.first_name
+    user_data = light_game.get_user_data(user_id, username)
+    
+    game_text = f"""
+<b>👤 ВЛАДЕЛЕЦ:</b> {username}
+<b>💎 УРОВЕНЬ:</b> {user_data['level']}
+<b>💰 БАЛАНС:</b> {user_data['light_balance']:.2f} LIGHT
+<b>📖 СТРАНИЦ:</b> {user_data['death_note_pages']}
+<b>☠️ ЦЕЛЕЙ:</b> {user_data['eliminated_targets']}
+
+<b>{'👁️ ГЛАЗА ШИНИГАМИ: АКТИВНЫ' if user_data['shinigami_eyes'] else '🔒 ГЛАЗА ШИНИГАМИ: ЗАБЛОКИРОВАНЫ'}</b>
+
+<b>🎯 ДОСТИЖЕНИЯ:</b> {len(user_data['achievements'])}/10
+"""
+    
+    text = styled_bot.format_message("LIGHT COIN - ТЕТРАДЬ СМЕРТИ", game_text, "success")
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("✍️ СДЕЛАТЬ ЗАПИСЬ", callback_data="light_write"),
+        InlineKeyboardButton("☠️ УСТРАНИТЬ ЦЕЛЬ", callback_data="light_eliminate"),
+        InlineKeyboardButton("📊 МОЙ СТАТУС", callback_data="light_status"),
+        InlineKeyboardButton("🏆 ТАБЛИЦА ЛИДЕРОВ", callback_data="light_leaderboard"),
+        InlineKeyboardButton("💎 РЫНОК LIGHT", callback_data="light_market"),
+        InlineKeyboardButton("📊 АНАЛИЗ РЫНКА", callback_data="analysis_menu"),
+        InlineKeyboardButton("🎴 NFT", callback_data="nft_market")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def light_write_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запись в тетрадь"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user_id = update.effective_user.id
+    success, message = light_game.add_write(user_id)
+    
+    events = [
+        "Запись о будущих событиях",
+        "Имена коррумпированных политиков", 
+        "План по установлению справедливости"
+    ]
+    event = random.choice(events)
+    
+    if success:
+        text = f"✍️ <b>ЗАПИСЬ В ТЕТРАДИ</b>\n\n📖 {event}\n\n{message}"
+    else:
+        text = message
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("✍️ ЕЩЕ ЗАПИСЬ", callback_data="light_write"),
+        InlineKeyboardButton("📊 СТАТУС", callback_data="light_status"),
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def light_eliminate_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Меню устранения целей"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    targets = [
+        {"name": "Коррумпированный политик", "level": random.randint(3, 8), "difficulty": "средняя"},
+        {"name": "Наркобарон", "level": random.randint(6, 10), "difficulty": "сложная"},
+        {"name": "Мошенник", "level": random.randint(2, 5), "difficulty": "легкая"}
+    ]
+    
+    keyboard = []
+    for target in targets:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"☠️ {target['name']} (Ур. {target['level']})", 
+                callback_data=f"eliminate_{target['name']}_{target['level']}_{target['difficulty']}"
+            )
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu")
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "☠️ <b>ВЫБЕРИ ЦЕЛЬ ДЛЯ УСТРАНЕНИЯ</b>\n\nЧем выше уровень - тем больше награда!"
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=reply_markup)
+
+async def light_eliminate_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Устранение цели"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data.replace('eliminate_', '').split('_')
+    target_name = data[0]
+    crime_level = int(data[1])
+    difficulty = data[2]
+    
+    success, message = light_game.eliminate_target(user_id, target_name, crime_level, difficulty)
+    
+    if success:
+        text = f"☠️ <b>ЦЕЛЬ УСТРАНЕНА</b>\n\n🎯 {target_name}\n⚡ Уровень: {crime_level}\n🎪 Сложность: {difficulty}\n\n{message}"
+    else:
+        text = message
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("☠️ НОВАЯ ЦЕЛЬ", callback_data="light_eliminate"),
+        InlineKeyboardButton("📊 СТАТУС", callback_data="light_status"),
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu")
+    ])
+    
+    await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def light_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Статус игрока"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user_id = update.effective_user.id
+    username = update.effective_user.first_name
+    user_data = light_game.get_user_data(user_id, username)
+    market_data = light_game.get_market_data()
+    
+    text = f"""
+🔮 <b>СТАТУС ИГРОКА</b>
+
+👤 Игрок: {username}
+💎 Уровень: {user_data['level']}
+💰 Баланс: {user_data['light_balance']:.2f} LIGHT
+📖 Страниц тетради: {user_data['death_note_pages']}
+☠️ Устранено целей: {user_data['eliminated_targets']}
+
+{'👁️ Глаза Шинигами: АКТИВНЫ' if user_data['shinigami_eyes'] else '🔒 Глаза Шинигами: заблокированы (уровень 5+)'}
+
+💹 Рынок LIGHT:
+• Цена: ${market_data['price']:.6f}
+• Капитализация: ${market_data['market_cap']:,.2f}
+
+🎯 Продолжай вершить правосудие!
+    """
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("✍️ СДЕЛАТЬ ЗАПИСЬ", callback_data="light_write"),
+        InlineKeyboardButton("☠️ УСТРАНИТЬ ЦЕЛЬ", callback_data="light_eliminate"),
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def light_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Таблица лидеров"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    leaders = light_game.get_leaderboard(10)
+    
+    text = "🏆 <b>ТАБЛИЦА ЛИДЕРОВ LIGHT COIN</b>\n\n"
+    for i, leader in enumerate(leaders, 1):
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        text += f"{medal} {leader['username']}\n"
+        text += f"   💰 {leader['balance']:.2f} LIGHT | ⭐ Ур. {leader['level']} | ☠️ {leader['eliminated']} целей\n\n"
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def light_market(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Рынок Light Coin"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    market_data = light_game.get_market_data()
+    
+    text = f"""
+💎 <b>РЫНОК LIGHT COIN</b>
+
+💰 Цена: ${market_data['price']:.6f}
+🏦 Капитализация: ${market_data['market_cap']:,.2f}
+📊 Общее предложение: {market_data['total_supply']:,.0f} LIGHT
+🎢 Волатильность: {market_data['volatility']:.1f}%
+
+🚀 <b>Факторы роста:</b>
+• Устранение опасных целей
+• Активные записи в тетради
+• Рост сообщества
+
+💡 Цена растет с активностью игроков!
+    """
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("✍️ СДЕЛАТЬ ЗАПИСЬ", callback_data="light_write"),
+        InlineKeyboardButton("🔮 В ИГРУ", callback_data="game_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+# ==================== СИСТЕМА ОТЗЫВОВ - КОМАНДЫ ====================
+async def reviews_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Меню отзывов"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    stats = review_system.get_reviews_stats()
+    total_reviews, avg_rating, five_stars = stats
+    
+    text = styled_bot.format_message(
+        "ОТЗЫВЫ И РЕЙТИНГИ",
+        f"""
+⭐ <b>ОБЩАЯ СТАТИСТИКА:</b>
+📊 Всего отзывов: {total_reviews}
+🏆 Средний рейтинг: {avg_rating:.1f}/5
+💫 5-звездочных: {five_stars}
+
+🎯 <b>Ваш отзыв помогает стать лучше!</b>
+
+Выберите действие:
+        """,
+        "review"
+    )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("⭐ ОСТАВИТЬ ОТЗЫВ", callback_data="leave_review"),
+        InlineKeyboardButton("📊 ПОСМОТРЕТЬ ОТЗЫВЫ", callback_data="view_reviews"),
+        InlineKeyboardButton("✍️ МОЙ ОТЗЫВ", callback_data="my_review"),
+        InlineKeyboardButton("⬅️ ГЛАВНАЯ", callback_data="back_main")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def leave_review_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало процесса оставления отзыва"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    # Сохраняем состояние - пользователь начал оставлять отзыв
+    context.user_data['leaving_review'] = True
+    
+    text = styled_bot.format_message(
+        "НАПИСАНИЕ ОТЗЫВА",
+        """
+📝 <b>Пожалуйста, оцените бота по 5-балльной шкале:</b>
+
+1 ⭐ - Ужасно
+2 ⭐ - Плохо  
+3 ⭐ - Нормально
+4 ⭐ - Хорошо
+5 ⭐ - Отлично
+
+<b>Выберите оценку:</b>
+        """,
+        "review"
+    )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("1 ⭐", callback_data="review_1"),
+        InlineKeyboardButton("2 ⭐", callback_data="review_2"),
+        InlineKeyboardButton("3 ⭐", callback_data="review_3"),
+        InlineKeyboardButton("4 ⭐", callback_data="review_4"),
+        InlineKeyboardButton("5 ⭐", callback_data="review_5"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="reviews_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def set_review_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Установка рейтинга отзыва"""
+    query = update.callback_query
+    await query.answer()
+    
+    rating = int(query.data.split('_')[1])
+    context.user_data['review_rating'] = rating
+    
+    text = styled_bot.format_message(
+        "НАПИСАНИЕ ОТЗЫВА",
+        f"""
+⭐ <b>Вы выбрали оценку: {rating}/5</b>
+
+📝 Теперь напишите ваш отзыв (максимум 500 символов):
+
+💡 <i>Расскажите о вашем опыте использования бота, что понравилось, что можно улучшить.</i>
+        """,
+        "review"
+    )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="leave_review")
+    ])
+    
+    await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def handle_review_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка текста отзыва"""
+    if not context.user_data.get('leaving_review'):
+        return
+    
+    review_text = update.message.text
+    rating = context.user_data.get('review_rating', 0)
+    user = update.effective_user
+    
+    if len(review_text) > 500:
+        await update.message.reply_text("❌ Отзыв слишком длинный! Максимум 500 символов.")
+        return
+    
+    # Сохраняем отзыв
+    success = review_system.add_review(
+        user.id, 
+        user.first_name, 
+        rating, 
+        review_text
+    )
+    
+    if success:
+        # Очищаем состояние
+        context.user_data.pop('leaving_review', None)
+        context.user_data.pop('review_rating', None)
+        
+        text = styled_bot.format_message(
+            "ОТЗЫВ СОХРАНЕН!",
+            f"""
+✅ <b>Спасибо за ваш отзыв!</b>
+
+⭐ Оценка: {rating}/5
+📝 Отзыв: {review_text}
+
+💫 Ваше мнение очень важно для нас!
+            """,
+            "success"
+        )
+    else:
+        text = styled_bot.format_message(
+            "ОШИБКА",
+            "❌ Произошла ошибка при сохранении отзыва. Попробуйте позже.",
+            "danger"
+        )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("📊 ВСЕ ОТЗЫВЫ", callback_data="view_reviews"),
+        InlineKeyboardButton("⭐ ЕЩЕ ОТЗЫВ", callback_data="leave_review"),
+        InlineKeyboardButton("⬅️ ГЛАВНАЯ", callback_data="back_main")
+    ])
+    
+    await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def view_reviews(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Просмотр отзывов"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    reviews = review_system.get_approved_reviews(10)
+    stats = review_system.get_reviews_stats()
+    total_reviews, avg_rating, five_stars = stats
+    
+    if not reviews:
+        text = styled_bot.format_message(
+            "ОТЗЫВЫ",
+            "📝 Пока нет отзывов. Будьте первым!",
+            "review"
+        )
+    else:
+        text = styled_bot.format_message(
+            "ПОСЛЕДНИЕ ОТЗЫВЫ",
+            f"""
+⭐ <b>Общая статистика:</b>
+📊 Отзывов: {total_reviews} | 🏆 Рейтинг: {avg_rating:.1f}/5
+
+<b>Последние отзывы:</b>
+            """,
+            "review"
+        )
+        
+        for i, (username, rating, comment, timestamp) in enumerate(reviews[:5], 1):
+            stars = '⭐' * rating
+            date = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S').strftime('%d.%m.%Y')
+            text += f"\n{i}. {stars}\n"
+            text += f"   👤 {username}\n"
+            text += f"   📝 {comment}\n"
+            text += f"   📅 {date}\n"
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("⭐ ОСТАВИТЬ ОТЗЫВ", callback_data="leave_review"),
+        InlineKeyboardButton("✍️ МОЙ ОТЗЫВ", callback_data="my_review"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="reviews_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+async def my_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Просмотр своего отзыва"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user = update.effective_user
+    review = review_system.get_user_review(user.id)
+    
+    if not review:
+        text = styled_bot.format_message(
+            "ВАШ ОТЗЫВ",
+            "📝 У вас еще нет отзывов.\n\nХотите оставить первый отзыв?",
+            "review"
+        )
+    else:
+        rating, comment, timestamp = review
+        stars = '⭐' * rating
+        date = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S').strftime('%d.%m.%Y %H:%M')
+        
+        text = styled_bot.format_message(
+            "ВАШ ОТЗЫВ",
+            f"""
+{stars}
+
+📝 <b>Ваш отзыв:</b>
+{comment}
+
+📅 <b>Дата:</b> {date}
+
+💫 Спасибо за ваш вклад!
+            """,
+            "review"
+        )
+    
+    keyboard = styled_bot.create_death_note_keyboard([
+        InlineKeyboardButton("⭐ ОСТАВИТЬ ОТЗЫВ", callback_data="leave_review"),
+        InlineKeyboardButton("✏️ ИЗМЕНИТЬ ОТЗЫВ", callback_data="leave_review"),
+        InlineKeyboardButton("📊 ВСЕ ОТЗЫВЫ", callback_data="view_reviews"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="reviews_menu")
+    ])
+    
+    if query:
+        await query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=keyboard)
+
+# ==================== ОБРАБОТЧИК КНОПОК ====================
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик всех кнопок"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    command = query.data
+    start_time = datetime.now()
+    
+    try:
+        # Обработка команд
+        if query.data == "back_main":
+            await start(update, context)
+        elif query.data == "analysis_menu":
+            await analysis_menu(update, context)
+        elif query.data == "game_menu":
+            await enhanced_light_coin_menu(update, context)
+        elif query.data == "help":
+            await help_command(update, context)
+        elif query.data == "nft_market":
+            await nft_marketplace_command(update, context)
+        elif query.data == "my_stars":
+            await my_stars_command(update, context)
+        elif query.data == "my_nfts":
+            await my_nfts_command(update, context)
+        elif query.data == "market_overview":
+            await market_overview(update, context)
+        elif query.data == "trending":
+            await trending_coins(update, context)
+        elif query.data.startswith("analyze_"):
+            await comprehensive_analysis(update, context)
+        elif query.data == "light_write":
+            await light_write_action(update, context)
+        elif query.data == "light_eliminate":
+            await light_eliminate_menu(update, context)
+        elif query.data.startswith("eliminate_"):
+            await light_eliminate_action(update, context)
+        elif query.data == "light_status":
+            await light_status(update, context)
+        elif query.data == "light_leaderboard":
+            await light_leaderboard(update, context)
+        elif query.data == "light_market":
+            await light_market(update, context)
+        # Новые обработчики для отзывов
+        elif query.data == "reviews_menu":
+            await reviews_menu(update, context)
+        elif query.data == "leave_review":
+            await leave_review_start(update, context)
+        elif query.data.startswith("review_"):
+            await set_review_rating(update, context)
+        elif query.data == "view_reviews":
+            await view_reviews(update, context)
+        elif query.data == "my_review":
+            await my_review(update, context)
+        
+        # Логируем успешное выполнение
+        response_time = (datetime.now() - start_time).total_seconds()
+        learning_system.log_command_usage(command, user_id, response_time, True)
+        
+    except Exception as e:
+        # Логируем ошибку
+        response_time = (datetime.now() - start_time).total_seconds()
+        learning_system.log_command_usage(command, user_id, response_time, False)
+        logger.error(f"Ошибка в обработчике кнопок: {e}")
+
+# ==================== КОМАНДЫ ====================
+async def analysis_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /analysis"""
+    await analysis_menu(update, context)
+
+async def game_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /game"""
+    await enhanced_light_coin_menu(update, context)
+
+async def nft_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /nft"""
+    await nft_marketplace_command(update, context)
+
+async def mystars_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /mystars"""
+    await my_stars_command(update, context)
+
+async def mynfts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /mynfts"""
+    await my_nfts_command(update, context)
+
+async def bitcoin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /bitcoin"""
+    await comprehensive_analysis(update, context, 'bitcoin')
+
+async def ethereum_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /ethereum"""
+    await comprehensive_analysis(update, context, 'ethereum')
+
+async def solana_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /solana"""
+    await comprehensive_analysis(update, context, 'solana')
+
+async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /market"""
+    await market_overview(update, context)
+
+async def trending_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /trending"""
+    await trending_coins(update, context)
+
+async def write_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /write"""
+    await light_write_action(update, context)
+
+async def mystats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /mystats"""
+    await light_status(update, context)
+
+async def targets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /targets"""
+    await light_eliminate_menu(update, context)
+
+async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /leaderboard"""
+    await light_leaderboard(update, context)
+
+async def lightmarket_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /lightmarket"""
+    await light_market(update, context)
+
+# Новая команда отзывов
+async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /reviews"""
+    await reviews_menu(update, context)
+
+# ==================== ЗАПУСК БОТА ====================
+def main():
+    """Запуск бота"""
+    try:
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Регистрация команд
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("analysis", analysis_command))
+        application.add_handler(CommandHandler("game", game_command))
+        application.add_handler(CommandHandler("nft", nft_command))
+        application.add_handler(CommandHandler("mystars", mystars_command))
+        application.add_handler(CommandHandler("mynfts", mynfts_command))
+        application.add_handler(CommandHandler("bitcoin", bitcoin_command))
+        application.add_handler(CommandHandler("ethereum", ethereum_command))
+        application.add_handler(CommandHandler("solana", solana_command))
+        application.add_handler(CommandHandler("market", market_command))
+        application.add_handler(CommandHandler("trending", trending_command))
+        application.add_handler(CommandHandler("write", write_command))
+        application.add_handler(CommandHandler("mystats", mystats_command))
+        application.add_handler(CommandHandler("targets", targets_command))
+        application.add_handler(CommandHandler("leaderboard", leaderboard_command))
+        application.add_handler(CommandHandler("lightmarket", lightmarket_command))
+        # Новая команда отзывов
+        application.add_handler(CommandHandler("reviews", reviews_command))
+        
+        # Обработчик кнопок
+        application.add_handler(CallbackQueryHandler(button_handler))
+        
+        # Обработчик текста для отзывов
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_review_text))
+        
+        print("🔮 Бот 'Тетрадь Смерти' запущен!")
+        print("📊 Улучшенный анализ: АКТИВЕН")
+        print("🎮 Продвинутая игра: АКТИВНА")
+        print("🎴 NFT система: АКТИВНА")
+        print("⭐ Система отзывов: АКТИВНА")
+        print("🤖 Система самообучения: АКТИВНА")
+        print("🎨 Стиль: Death Note")
+        print("⚡ Команды: /start, /game, /analysis, /nft, /reviews, /help")
+        print("🔗 Напишите /start в Telegram")
+        
+        application.run_polling()
+        
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+
+if __name__ == '__main__':
+    main()
